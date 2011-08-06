@@ -59,8 +59,8 @@ Trans.prototype.init = function( file, types, pageMatch, ignore )
 {
   this.file = file;
   this.setRegExp( types );
-  this.pageRegExp = new RegExp( pageMatch, "i" );
-  this.ignoreRegExp = new RegExp( ignore );
+  this.pageRE = new RegExp( pageMatch, "i" );
+  this.ignoreRE = new RegExp( ignore );
   this.pageText = this.parseText();
 }
 
@@ -87,13 +87,14 @@ Trans.prototype.init = function( file, types, pageMatch, ignore )
 /**
  * Regular expression to match against page numbers
  **/
-Trans.prototype.pageRegExp =
+Trans.prototype.pageRE =
   /^\s*(?:p{1,2}(?:age|g)?|<)?[.s]{0,2}\s*([\d]+(?:-[\d]+)?)(.*)/;
 
 /**
  * RegExp to filter out parts of the line
  **/
-Trans.prototype.ignoreRegExp = /^[\w\(\)?\-'&\s]+?:\s*/;
+Trans.prototype.ignoreRE = /^[\w\(\)?\-'&\s]+?:\s*|^\s*/;
+Trans.prototype.hasContentRE = /.*[\w!?.]+.*/;
 Trans.prototype.regex = {};
 Trans.prototype.file = null;
 Trans.prototype.pageText = null;
@@ -137,7 +138,7 @@ Trans.prototype.parseText = function()
   }
 
   while ( line = this.getNextLine( this.file ) )
-    if ( this.pageRegExp.test( line ) )
+    if ( this.pageRE.test( line ) )
     {
       page = new Array();
       trans[ RegExp.$1 ] = page;
@@ -164,19 +165,19 @@ Trans.prototype.parseText = function()
  **/
 Trans.prototype.parseLine = function( line, page )
 {
-  var clean = line.replace( this.ignoreRegExp, "" );
+  var clean = line.replace( this.ignoreRE, "" );
   if ( !clean )
     return;
-  
+
   // look for the first match and add it to the page
   for ( var re in this.regex )
   {
     var regex = this.regex[ re ];
 
-    if ( regex.test.test( clean ))
+    if ( regex.test.test( clean ) )
     {
       var extract = RegExp.$1;
-      var follow = RegExp.$2;
+      var follow = RegExp.$2.replace( this.ignoreRE, "" );
 
       if ( regex.replace )
         extract = extract.replace( regex.replace.match,
@@ -184,7 +185,8 @@ Trans.prototype.parseLine = function( line, page )
 
       page.push( { "orig": line, "type": re, "text": extract } );
 
-      if ( follow )
+      // process following text
+      if ( follow /*&& follow != clean && this.hasContentRE.test( follow )*/ )
         this.parseLine( follow, page );
 
       return;
@@ -471,7 +473,7 @@ UserInterface.prototype.addIgnoreInput = function( ignoreGrp )
   grp.chk.addEventListener( "click", this.bind( this.toggleIgnore ), false );
 
   grp.chk.value = true;
-  var s = this.trans.ignoreRegExp.toString();
+  var s = this.trans.ignoreRE.toString();
   grp.grp1.el.text = s.substring( 1, s.length - 1 );
 
   ignoreGrp.add( "panel {}" ); // horizontal divider
@@ -488,7 +490,7 @@ UserInterface.prototype.toggleIgnore = function( event )
   var def = "text to ignore";;
   if ( el.text == def )
   {
-    var s = this.trans.ignoreRegExp.toString();
+    var s = this.trans.ignoreRE.toString();
     el.text = s.substring( 1, s.length - 1 );
   } 
   else if ( !el.text )
@@ -508,7 +510,7 @@ UserInterface.prototype.addPageMatch = function( pageMatchGrp )
     "}" );
 
   var el = this.pageMatch = grp.grp1.el;
-  var s = this.trans.pageRegExp.toString();
+  var s = this.trans.pageRE.toString();
   el.text = s.substring( 1, s.length - 1 );
 };
 
@@ -732,12 +734,15 @@ UserInterface.prototype.updateRegExp = function()
 
   var allDelim = "", tt = this.textTypes;
   for ( var delim in tt )
-    allDelim += tt[ delim ].start + tt[ delim ].end;
+    allDelim += tt[ delim ].start + tt[ delim ].end;  
 
+  // if no delims are set, capture up to the start of another type
+  // otherwise, capture everything between the delims
   var captr = ( !sText && !eText ) ?
-              "([^" + allDelim.replace(/([\^\-\]\\])/g, "\\$1" ) + "]*)" :
-              "(.*)";
+              "([^" + allDelim.replace(/([\^\-\]\\])/g, "\\$1" ) + "]+)" :
+              "(.+?)"; // non-greedy capture only in first set of delimters
 
+  // capture any text at the end as well for further processing
   this.inputs.regexp.text = "^" + sText + captr + eText + "(.*)";
 };
 
