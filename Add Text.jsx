@@ -1,5 +1,10 @@
 ﻿/**
+ * - Page match regular expression simplification for CS5 compatibility.
+ * - Event listeners on delimeter text inputs direct set by attribute for 
+ *   CS5 compatibility.
+ *
  * 20090911
+ * - File and folder inputs editable
  * - Better handling for match input with no end text
  * - Fix for error if config select cancelled
  * - Fix for default ignore regex not matching properly
@@ -92,9 +97,11 @@ Trans.prototype.init = function( file, types, pageMatch, ignore )
  
 /**
  * Regular expression to match against page numbers
+ * I've found photoshop can die on this if trying to test against <text> if
+ * p{1,2} is used
  **/
 Trans.prototype.pageRE =
-  /^\s*(?:p{1,2}(?:age|g)?|<)?[.s]{0,2}\s*([\d]+(?:-[\d]+)?)[>:]?(.*)/;
+  /^\s*(?:(?:p|pp|page|pg)?[.s]{0,2}|<)\s*([\d-]{1,9})[>:]?(.*)/
 
 /**
  * RegExp to filter out parts of the line
@@ -145,7 +152,8 @@ Trans.prototype.parseText = function()
     return;
   }
 
-  while ( line = this.getNextLine( this.file ) )
+  while ( ( line = this.getNextLine( this.file ) ) )
+  {
     if ( this.pageRE.test( line ) )
     {
       page = new Array();
@@ -159,6 +167,7 @@ Trans.prototype.parseText = function()
     {
       this.parseLine( line, page )
     }
+  }
 
   var closed = this.file.close();
   if ( !closed )
@@ -628,7 +637,9 @@ UserInterface.prototype.addTypeList = function( listGrp )
   var typeList = listGrp.add( "listbox", UND );
   typeList.size = [ 100, 200 ];
 
-  typeList.addEventListener( "change", this.bind( function()
+  // assign onChange event handler directory, addEventListener doesn't seem to
+  // work with CS5
+  typeList.onChange = this.bind( function()
   {
     if ( typeList.selection ) // no selection if clicking in empty area
     {
@@ -637,7 +648,7 @@ UserInterface.prototype.addTypeList = function( listGrp )
       for ( var n in this.inputs )
         this.restoreInput( this.inputs, values, n );
     }
-  } ), false );
+  } );
 
   this.typeList = typeList;
 };
@@ -731,8 +742,8 @@ UserInterface.prototype.initMatchInput = function( pnl )
   var end = this.inputs.end = grpR.grp1.grp1b.el;
   this.inputs.regexp = grpR.grp2.grp.el;
 
-  start.addEventListener( "changing", this.bind( this.updateRegExp ), false );
-  end.addEventListener( "changing", this.bind( this.updateRegExp ), false );
+  start.onChanging = this.bind( this.updateRegExp );
+  end.onChanging = this.bind( this.updateRegExp );
   grpL.rb1.addEventListener( "click", this.bind( this.toggleMatch ), false );
   grpL.rb2.addEventListener( "click", this.bind( this.toggleMatch ), false );
 
@@ -959,7 +970,7 @@ UserInterface.prototype.getJSON = function()
           p_str += tt[p];
           break;
         case "object":
-          p_str += "[" + tt[p] + "]";
+          p_str += "//// trans:" + tt[p];
           break;
       }
       pa.push( p + ":" + p_str );
@@ -1512,7 +1523,6 @@ Processor.prototype.positionText = function( textItem, text )
 /*****************************************************************************/
 /******* Let's begin *********************************************************/
 /*****************************************************************************/
-
 
 
 new UserInterface();
