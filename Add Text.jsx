@@ -1,4 +1,10 @@
 ﻿/**
+ * 20090911
+ * - Better handling for match input with no end text
+ * - Fix for error if config select cancelled
+ * - Fix for default ignore regex not matching properly
+ * - Page match now ignores : and > after the numbers
+ *
  * 20090129
  * - Handles multiple text types on the same line.
  *
@@ -88,12 +94,13 @@ Trans.prototype.init = function( file, types, pageMatch, ignore )
  * Regular expression to match against page numbers
  **/
 Trans.prototype.pageRE =
-  /^\s*(?:p{1,2}(?:age|g)?|<)?[.s]{0,2}\s*([\d]+(?:-[\d]+)?)(.*)/;
+  /^\s*(?:p{1,2}(?:age|g)?|<)?[.s]{0,2}\s*([\d]+(?:-[\d]+)?)[>:]?(.*)/;
 
 /**
  * RegExp to filter out parts of the line
  **/
-Trans.prototype.ignoreRE = /^[\w\(\)?\-'&\s]+?:\s*|^\s*/;
+Trans.prototype.ignoreRE = /^[\w()?\-'&\s]+?[:>]\s*|^\s+/;
+
 Trans.prototype.hasContentRE = /.*[\w!?.]+.*/;
 Trans.prototype.regex = {};
 Trans.prototype.file = null;
@@ -106,6 +113,7 @@ Trans.prototype.pageText = null;
 Trans.prototype.setRegExp = function( types )
 {
   var all = "", nodelim;
+  this.regex = {};
 
   for ( var type in types )
   {
@@ -278,12 +286,12 @@ TypeHolder.prototype.checkLabel = function( input, textTypes )
   var label = input.text.replace( /[\W]/g, "_" );
 
   if ( !label )
-{
+  {
     label = "_1";
   }
 
   while ( textTypes[ label ] )
-{
+  {
     /(.*?)(_?)([\d]*)$/.test( label );
     label = RegExp.$1 + ( (RegExp.$2 ) ?
             RegExp.$2 + ( Number( RegExp.$3 ) + 1 ) : "_1" );
@@ -298,7 +306,7 @@ TypeHolder.prototype.checkLabel = function( input, textTypes )
 TypeHolder.prototype.checkSize = function( size )
 {
   if ( size.text && !/^\d+$/.test( size.text ))
-{
+  {
     size.text = prompt( "Text size invalid. Set new value:", 12 );
     this.checkSize( size );
   }
@@ -434,8 +442,19 @@ UserInterface.prototype.addSelects = function( selectGrp )
   {
     var select = selectGrp.add( "group", UND );
 
-    var path = select.add( "edittext", UND, text, { readonly: true } );
+    var path = select.add( "edittext", UND, text );
     path.size = [ 300, 20 ];
+    path.addEventListener( "focus", function() {
+                                      if ( !this.text || this.text == text )
+                                      {
+                                        this.oldPath = path.text;
+                                        this.text = "";
+                                      }
+                                    }, false );
+    path.addEventListener( "blur", function() {
+                                      if ( !this.text || this.text == text )
+                                        this.text = this.oldPath || "";
+                                    }, false );
 
     var btn = select.add( "button", UND, "Browse..." );
     btn.addEventListener( "click", this.bind( handler, path, start ), false );
@@ -736,14 +755,22 @@ UserInterface.prototype.updateRegExp = function()
   for ( var delim in tt )
     allDelim += tt[ delim ].start + tt[ delim ].end;  
 
+  var capture1 = "(.+)", capture2 = "";
+  if ( eText )
+  {
+    capture1 = "(.+?)"; // don't grab two instances of a text type in a line
+    capture2 = "(.*)"; // capture any trailing text
+  }
+
   // if no delims are set, capture up to the start of another type
-  // otherwise, capture everything between the delims
+  // otherwise, capture everything between the delims.
+  // this should always be the last one added TODO: dynamically update
   var captr = ( !sText && !eText ) ?
               "([^" + allDelim.replace(/([\^\-\]\\])/g, "\\$1" ) + "]+)" :
-              "(.+?)"; // non-greedy capture only in first set of delimters
+              capture1;
 
   // capture any text at the end as well for further processing
-  this.inputs.regexp.text = "^" + sText + captr + eText + "(.*)";
+  this.inputs.regexp.text = "^" + sText + captr + eText + capture2;
 };
 
 
@@ -874,14 +901,15 @@ UserInterface.prototype.loadConfig = function()
     cfgFile.open( "r" );
     config = cfgFile.read();
     cfgFile.close();
+
+
+    // clear list and overwrite textTypes with saved values
+    this.typeList.removeAll();
+    this.textTypes = eval( config );
+
+    for ( var type in this.textTypes ) // re-populate the list
+      this.typeList.add( "item", type );
   }
-
-  // clear list and overwrite textTypes with saved values
-  this.typeList.removeAll();
-  this.textTypes = eval( config );
-
-  for ( var type in this.textTypes ) // re-populate the list
-    this.typeList.add( "item", type );
 };
 
 /**
@@ -1116,6 +1144,7 @@ UserInterface.prototype.addTextType = function( inputs )
 
   var item = this.typeList.add( "item", type.label );
   this.textTypes[ type.label ] = type; // store it here too
+
   item.selected = true;
 };
 
