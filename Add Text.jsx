@@ -2,6 +2,9 @@
  * - Page match regular expression simplification for CS5 compatibility.
  * - Event listeners on delimeter text inputs direct set by attribute for 
  *   CS5 compatibility.
+ * - List fonts with PostScript name so we can set the font property of text
+ *   types easily.
+ * - Verify config file exists when selecting.
  *
  * 20090911
  * - File and folder inputs editable
@@ -49,7 +52,6 @@
  **/
 
 $.strict = true;
-$.level = 2;
 
 var UND = undefined; // because I don't feel like typing the whole thing out
 
@@ -907,7 +909,7 @@ UserInterface.prototype.loadConfig = function()
 {
   var config;
   var cfgFile = new File().openDlg( "Select config", "Ini File: *.ini" );
-  if ( cfgFile && cfgFile.type )
+  if ( cfgFile && cfgFile.exists )
   {
     cfgFile.open( "r" );
     config = cfgFile.read();
@@ -970,7 +972,7 @@ UserInterface.prototype.getJSON = function()
           p_str += tt[p];
           break;
         case "object":
-          p_str += "//// trans:" + tt[p];
+          p_str += "[" + tt[p] + "]";
           break;
       }
       pa.push( p + ":" + p_str );
@@ -1168,7 +1170,7 @@ UserInterface.prototype.delTextType = function()
   if ( !this.typeList.selection )
     return;
 
-  delete this.textTypes[this.typeList.selection.text];
+  delete this.textTypes[ this.typeList.selection.text ];
 
   var next = ( this.typeList.selection ) ? 
              this.typeList.selection.index - 1 : 0;
@@ -1184,7 +1186,7 @@ UserInterface.prototype.populateFontList = function( list )
 {
   try {
     for ( var i = 0; i < app.fonts.length; i++ )
-      list.add( "item", app.fonts[i].name );
+      list.add( "item", app.fonts[ i ].postScriptName );
 
     list.selection = 0;
   }
@@ -1248,7 +1250,7 @@ function Processor( imgDir, trans, textTypes )
 
   this.setUnits();
   this.setFonts();
-  this.processPages( textTypes );
+  this.processPages();
 
   this.restoreUnits();
 
@@ -1321,16 +1323,15 @@ Processor.prototype.setFonts = function()
 
   for ( var type in this.textTypes )
   {
-    var typeObj = this.textTypes[type];
-    typeObj.font = typeObj.font.replace( /\W/g, "" )
+    var typeObj = this.textTypes[ type ];
 
     var color = new SolidColor();
     color.rgb = new RGBColor();
 
     var c = typeObj.color;
-    color.rgb.red = c[0];
-		color.rgb.green = c[1];
-		color.rgb.blue = c[2];
+    color.rgb.red = c[ 0 ];
+		color.rgb.green = c[ 1 ];
+		color.rgb.blue = c[ 2 ];
     typeObj.color = color;
 
     var size = new UnitValue( typeObj.size, typeObj.units );
@@ -1347,7 +1348,7 @@ Processor.prototype.setFonts = function()
 /**
  * Start opening pages and adding text to them
  **/
-Processor.prototype.processPages = function( textTypes )
+Processor.prototype.processPages = function()
 {
   this.closeAll();
   var psdRe = /\.psd$/i;
@@ -1359,7 +1360,7 @@ Processor.prototype.processPages = function( textTypes )
     if ( page )
     {
       var doc = open( page );
-      this.addText( doc, this.trans[pg] );
+      this.addText( doc, this.trans[ pg ] );
 
       if ( psdRe.test( doc.name ))
       {
